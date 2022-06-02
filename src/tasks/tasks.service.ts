@@ -1,4 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
@@ -6,36 +8,22 @@ import { Task } from './entities/task.entity';
 
 @Injectable()
 export class TasksService {
-  private tasks: Task[] = [
-    {
-      id: 1,
-      task: 'Get milk',
-      importance: 'medium',
-    },
-    {
-      id: 2,
-      task: 'Water plants',
-      importance: 'high',
-    },
-  ];
+  constructor(
+    @InjectRepository(Task)
+    private readonly taskRepository: Repository<Task>
+  ) { }
 
-  create(task: CreateTaskDto) {
-    const id = this.tasks.length + 1;
-    const newTask: Task = {
-      id,
-      ...task,
-    };
-
-    this.tasks.push(newTask);
-    return newTask;
+  create(newTask: CreateTaskDto) {
+    const createdTask = this.taskRepository.create(newTask);
+    return this.taskRepository.save(createdTask);
   }
 
   findAll() {
-    return this.tasks;
+    return this.taskRepository.find();
   }
 
-  findOne(id: number) {
-    const task = this.tasks.find(task => task.id === id);
+  async findOne(id: number) {
+    const task = await this.taskRepository.findOne(id);
 
     if (!task) {
       throw new NotFoundException(`Task ${id} was not found!`);
@@ -44,32 +32,20 @@ export class TasksService {
   }
 
   async update(id: number, update: UpdateTaskDto) {
-    const existingTask = await this.findOne(id);
+    const updatedTask = await this.taskRepository.preload({
+      id,
+      ...update,
+    });
 
-    if (!existingTask) {
+    if (!updatedTask) {
       throw new NotFoundException(`Task ${id} was not found!`);
     }
 
-    const updatedTask = {
-      ...existingTask,
-      ...update,
-    }
-
-    await this.remove(id);
-
-    return this.create(updatedTask);
+    return this.taskRepository.save(updatedTask);
   }
 
-  remove(id: number) {
-    // .findIndex returns -1 when nothing found
-    const taskIndex = this.tasks.findIndex(task => task.id === id);
-
-    if (taskIndex === -1) {
-      throw new NotFoundException(`Task ${id} was not found!`);
-    }
-
-    if (taskIndex >= 0) {
-      this.tasks.splice(taskIndex, 1);
-    }
+  async remove(id: number) {
+    const taskToDelete = await this.findOne(id);
+    return this.taskRepository.remove(taskToDelete);
   }
 }
